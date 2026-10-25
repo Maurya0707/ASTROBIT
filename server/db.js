@@ -2,11 +2,16 @@ import mongoose from 'mongoose';
 import User from './models/User.js';
 import Problem from './models/Problem.js';
 
-export const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://astrobit:129astro6@astrobitapi.7qgrj7c.mongodb.net/astrobit?retryWrites=true&w=majority&appName=astrobitapi";
+export const MONGODB_URI = process.env.MONGODB_URI;
 
 export async function connectDB() {
   if (mongoose.connection.readyState >= 1) {
     return mongoose.connection;
+  }
+  if (!MONGODB_URI) {
+    const msg = 'MONGODB_URI is not set. Please add it to your .env file or hosting Environment Variables.';
+    console.error(`[MongoDB Atlas] Config Error: ${msg}`);
+    throw new Error(msg);
   }
   try {
     const conn = await mongoose.connect(MONGODB_URI, {

@@ -19,7 +19,8 @@ export async function connectDB() {
     return await cachedPromise;
   }
 
-  const uri = process.env.MONGODB_URI || MONGODB_URI;
+  const FALLBACK_URI = 'mongodb+srv://astrobit:129astro6@astrobitapi.7qgrj7c.mongodb.net/astrobit?retryWrites=true&w=majority&appName=astrobitapi';
+  const uri = process.env.MONGODB_URI || MONGODB_URI || FALLBACK_URI;
   if (!uri) {
     const msg = 'MONGODB_URI is not set. Please configure MONGODB_URI in your Vercel Project Environment Variables or .env file.';
     console.error(`[MongoDB Atlas] Config Error: ${msg}`);

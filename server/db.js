@@ -5,6 +5,9 @@ import Problem from './models/Problem.js';
 export const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://astrobit:129astro6@astrobitapi.7qgrj7c.mongodb.net/astrobit?retryWrites=true&w=majority&appName=astrobitapi";
 
 export async function connectDB() {
+  if (mongoose.connection.readyState >= 1) {
+    return mongoose.connection;
+  }
   try {
     const conn = await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 15000,

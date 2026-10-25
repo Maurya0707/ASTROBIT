@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { connectDB, Problem, User, MONGODB_URI } from './db.js';

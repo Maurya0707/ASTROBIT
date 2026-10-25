@@ -45,6 +45,44 @@ export function getApiBaseUrl() {
 const API_BASE = getApiBaseUrl();
 
 /**
+ * Safe JSON parser for HTTP responses:
+ * Prevents "Unexpected token '<' / 'A' is not valid JSON" errors when server/Vercel returns HTML error pages
+ */
+async function parseJsonResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+  let data = null;
+
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch (e) {
+      // Fallback to text parsing
+    }
+  }
+
+  if (!data) {
+    const text = await res.text().catch(() => '');
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      if (!res.ok) {
+        return {
+          success: false,
+          error: `Server Error (${res.status}): The backend returned an unexpected response. Please ensure MONGODB_URI is configured in Vercel environment variables.`
+        };
+      }
+      data = { success: false, error: text || 'Invalid server response.' };
+    }
+  }
+
+  if (!res.ok && !data.error) {
+    data.error = `Server request failed with status ${res.status}`;
+  }
+
+  return data;
+}
+
+/**
  * Register / Sign Up a new Student Cadet or Faculty Admin
  */
 export async function authRegister({ role, mobileNo, rollNo, facultyId, name, password, passkey, avatar }) {
@@ -62,8 +100,7 @@ export async function authRegister({ role, mobileNo, rollNo, facultyId, name, pa
         avatar 
       })
     });
-    const data = await res.json();
-    return data;
+    return await parseJsonResponse(res);
   } catch (err) {
     console.warn('[API] Register offline/network error, fallback mode:', err.message);
     const isNetwork = !err.response && (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed'));
@@ -91,8 +128,7 @@ export async function authLogin({ role, mobileNo, rollNo, facultyId, password })
         password 
       })
     });
-    const data = await res.json();
-    return data;
+    return await parseJsonResponse(res);
   } catch (err) {
     console.warn('[API] Login offline/network error:', err.message);
     const isNetwork = !err.response && (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed'));
@@ -120,7 +156,7 @@ export async function syncUserProgress({ mobileNo, rollNo, facultyId, progress, 
         avatar 
       })
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (err) {
     console.warn('[API] Progress sync offline:', err.message);
     return { success: false, error: err.message };
@@ -133,7 +169,7 @@ export async function syncUserProgress({ mobileNo, rollNo, facultyId, progress, 
 export async function fetchProblemsFromDB() {
   try {
     const res = await fetch(`${API_BASE}/problems`);
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     if (data.success && Array.isArray(data.problems)) {
       return data.problems;
     }
@@ -154,7 +190,7 @@ export async function createProblemInDB(problemData) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(problemData)
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (err) {
     console.error('[API] Failed to insert problem into MongoDB:', err.message);
     return { success: false, error: err.message };
@@ -169,7 +205,7 @@ export async function deleteProblemFromDB(problemId) {
     const res = await fetch(`${API_BASE}/problems/${problemId}`, {
       method: 'DELETE'
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (err) {
     console.error('[API] Failed to delete problem from MongoDB:', err.message);
     return { success: false, error: err.message };
@@ -186,7 +222,7 @@ export async function addTestCaseToDB(problemId, testCaseData) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(testCaseData)
     });
-    return await res.json();
+    return await parseJsonResponse(res);
   } catch (err) {
     console.error('[API] Failed to add test case to MongoDB:', err.message);
     return { success: false, error: err.message };

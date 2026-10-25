@@ -25,25 +25,53 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '2mb' }));
 
+// Middleware to normalize request URLs (handling Vercel rewrites)
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/index.js')) {
+    req.url = req.url.replace('/api/index.js', '') || '/';
+  }
+  next();
+});
+
 // Middleware to ensure database connection is established (crucial for Serverless/Vercel)
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
+  // Only connect to DB for API endpoints, skip static asset requests
+  if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/problems') || req.path.startsWith('/user')) {
     try {
       await connectDB();
     } catch (err) {
       console.error('[DB Middleware] Connection error:', err.message);
+      return res.status(500).json({
+        success: false,
+        error: `Database connection error: ${err.message}. Please verify MONGODB_URI in hosting environment variables.`
+      });
     }
   }
   next();
 });
 
-// Mount Database API Routes
+// Root API Status Endpoint
+app.get(['/api', '/api/status'], (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    system: 'ASTROBIT API Gateway v3.0',
+    database: 'CONNECTED_MONGODB_ATLAS',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Mount Database API Routes (support both /api/* and direct /* paths for flexible Vercel rewrites)
 app.use('/api/auth', authRouter);
+app.use('/auth', authRouter);
+
 app.use('/api/user', authRouter);
+app.use('/user', authRouter);
+
 app.use('/api/problems', problemsRouter);
+app.use('/problems', problemsRouter);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ONLINE',
     system: 'ASTROBIT Backend Server v3.0 (MongoDB Atlas Connected)',
@@ -54,7 +82,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Admin stats endpoint
-app.get('/api/admin/metrics', async (req, res) => {
+app.get(['/api/admin/metrics', '/admin/metrics'], async (req, res) => {
   try {
     const { Problem, User } = await import('./db.js');
     const problemCount = await Problem.countDocuments();
@@ -84,7 +112,7 @@ app.get('/api/admin/metrics', async (req, res) => {
 });
 
 // Code compilation / evaluation endpoint
-app.post('/api/compile', async (req, res) => {
+app.post(['/api/compile', '/compile'], async (req, res) => {
   const { code, input } = req.body;
 
   if (!code) {
@@ -115,7 +143,7 @@ app.post('/api/compile', async (req, res) => {
 
       const compileExitCode = await new Promise(r => gcc.on('close', r));
       if (compileExitCode !== 0) {
-        fs.unlinkSync(srcPath);
+        if (fs.existsSync(srcPath)) fs.unlinkSync(srcPath);
         return res.json({
           success: false,
           status: 'COMPILATION_ERROR',
@@ -169,7 +197,7 @@ app.post('/api/compile', async (req, res) => {
       return res.status(500).json({ success: false, error: e.message });
     }
   } else {
-    // Host has no GCC: client sandbox will handle execution
+    // Host has no GCC (e.g. Vercel serverless): client sandbox will handle execution
     return res.json({
       success: true,
       delegatedToClient: true,
@@ -178,7 +206,24 @@ app.post('/api/compile', async (req, res) => {
   }
 });
 
-// Serve production frontend assets if built
+// JSON 404 for unmatched API routes
+app.all(['/api/*', '/auth/*', '/problems/*', '/user/*'], (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API route not found: ${req.method} ${req.originalUrl || req.url}`
+  });
+});
+
+// Global JSON Error Handler (prevents HTML error pages on unhandled exceptions)
+app.use((err, req, res, next) => {
+  console.error('[ASTROBIT Server Error]:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal server error occurred.'
+  });
+});
+
+// Serve production frontend assets if built and run standalone
 const distPath = path.join(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));

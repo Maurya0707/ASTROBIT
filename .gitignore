@@ -8,12 +8,10 @@ dist/
 dist-ssr/
 build/
 
-# Environment variables
+# Environment variables (strictly never commit secrets)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # Logs
 npm-debug.log*

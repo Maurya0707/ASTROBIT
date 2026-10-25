@@ -1,6 +1,48 @@
 // ASTROBIT Central API Client for MongoDB Atlas Backend
 
-const API_BASE = 'http://localhost:3001/api';
+/**
+ * Dynamically resolves the API Base URL:
+ * 1. Checks VITE_API_URL or VITE_API_BASE_URL (for separate frontend & backend deployments e.g., Vercel + Render/Railway)
+ * 2. Checks localStorage override or window.__ASTROBIT_API_URL__ (for runtime injection / debugging)
+ * 3. In browser production environments (any domain/host other than localhost / 127.0.0.1), defaults to relative '/api'
+ *    which automatically routes to the hosting domain (preventing Mixed Content HTTPS issues & CORS issues)
+ * 4. In local development, falls back to direct http://localhost:3001/api or /api
+ */
+export function getApiBaseUrl() {
+  const envUrl = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_API_BASE_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    const cleanUrl = envUrl.trim().replace(/\/+$/, '');
+    return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+  }
+
+  if (typeof window !== 'undefined') {
+    if (window.__ASTROBIT_API_URL__) {
+      const cleanUrl = String(window.__ASTROBIT_API_URL__).trim().replace(/\/+$/, '');
+      return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+    }
+    
+    try {
+      const localOverride = localStorage.getItem('astrobit_api_base');
+      if (localOverride) {
+        const cleanUrl = localOverride.trim().replace(/\/+$/, '');
+        return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+      }
+    } catch (e) {
+      // Ignore localStorage errors (e.g. private browsing restrictions)
+    }
+
+    const { hostname } = window.location;
+    // Production domain / external host: use relative /api
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return '/api';
+    }
+  }
+
+  // Development default for local machine
+  return 'http://localhost:3001/api';
+}
+
+const API_BASE = getApiBaseUrl();
 
 /**
  * Register / Sign Up a new Student Cadet or Faculty Admin
@@ -24,9 +66,12 @@ export async function authRegister({ role, mobileNo, rollNo, facultyId, name, pa
     return data;
   } catch (err) {
     console.warn('[API] Register offline/network error, fallback mode:', err.message);
+    const isNetwork = !err.response && (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed'));
     return {
       success: false,
-      error: 'Unable to reach backend server. Please verify the server is running on port 3001.'
+      error: isNetwork
+        ? 'Unable to reach ASTROBIT backend server. Please verify network connection or server status.'
+        : (err.message || 'Registration failed due to a server connection issue.')
     };
   }
 }
@@ -50,9 +95,12 @@ export async function authLogin({ role, mobileNo, rollNo, facultyId, password })
     return data;
   } catch (err) {
     console.warn('[API] Login offline/network error:', err.message);
+    const isNetwork = !err.response && (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed'));
     return {
       success: false,
-      error: 'Unable to connect to ASTROBIT server. Please check port 3001.'
+      error: isNetwork
+        ? 'Unable to reach ASTROBIT backend server. Please verify network connection or server status.'
+        : (err.message || 'Login failed due to a server connection issue.')
     };
   }
 }
